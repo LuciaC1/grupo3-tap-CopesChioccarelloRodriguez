@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "JKLM Bot Integrador",
+  "version": "1.0",
+  "description": "Agente autonomo para BombParty",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.jklm.fun/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.jklm.fun/*"],
+      "all_frames": true,
+      "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["diccionario.txt"],
+      "matches": ["*://*.jklm.fun/*"]
+    }
+  ]
+}
