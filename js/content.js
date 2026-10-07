@@ -2,7 +2,7 @@ let diccionario = [];
 let diccionarioCargado = false;
 
 async function cargarDiccionario() {
-  const respuesta = await fetch(chrome.runtime.getURL("diccionario.txt"));
+  const respuesta = await fetch(chrome.runtime.getURL("diccionarios/diccionarioingles.txt"));
 
   if (!respuesta.ok) {
     throw new Error(`No se pudo leer el archivo: ${respuesta.status}`);
@@ -26,13 +26,18 @@ let botActivado = false;
 let silabaJugadaEnEsteTurno = ""; // Actúa como candado para no jugar dos veces el mismo turno
 
 // Escuchamos la señal del botón "¡Jugar!" del popup
-chrome.runtime.onMessage.addListener((mensaje) => {
+chrome.runtime.onMessage.addListener(async (mensaje) => {
   if (mensaje.comando === "iniciar_bot") {
     if (!botActivado) {
       botActivado = true;
       console.log("🤖 Bot Automático Activado. Vigilando turnos...");
       if (!diccionarioCargado) {
-        cargarDiccionario();
+        try {
+          await cargarDiccionario();
+        } catch (error) {
+          console.error("❌ Error cargando diccionario:", error);
+          return;
+        }
       }
       iniciarVigilancia();
     }

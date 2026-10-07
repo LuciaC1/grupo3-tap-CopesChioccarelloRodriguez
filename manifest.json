@@ -11,19 +11,22 @@
     "*://*.jklm.fun/*"
   ],
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "html/popup.html"
   },
   "content_scripts": [
     {
       "matches": ["*://*.jklm.fun/*"],
       "all_frames": true,
-      "js": ["content.js"]
+      "js": ["js/content.js"]
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["diccionario.txt"],
+      "resources": ["diccionarios/diccionarioingles.txt"],
       "matches": ["*://*.jklm.fun/*"]
     }
-  ]
+  ],
+  "icons": {
+    "48" : "icons/icon48.png"
+  }
 }
