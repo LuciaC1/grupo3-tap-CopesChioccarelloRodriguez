@@ -24,6 +24,8 @@ async function cargarDiccionario() {
 
 let botActivado = false;
 let silabaJugadaEnEsteTurno = ""; // Actúa como candado para no jugar dos veces el mismo turno
+let ultimoIntentoTimestamp = 0;
+const palabrasIntentadasPorSilaba = new Map();
 
 // Escuchamos la señal del botón "¡Jugar!" del popup
 chrome.runtime.onMessage.addListener(async (mensaje) => {
@@ -58,32 +60,157 @@ function iniciarVigilancia() {
 
     if (esMiTurno && divSilaba) {
       const silabaActual = divSilaba.textContent.trim().toLowerCase(); // esto es para que el bot compare siempre en minúsculas y sin espacios raros
+      const reintentarMismaSilaba = silabaActual === silabaJugadaEnEsteTurno && Date.now() - ultimoIntentoTimestamp > 800;
 
-      // Si hay una sílaba y todavía NO jugamos en este turno exacto
-      if (silabaActual !== "" && silabaActual !== silabaJugadaEnEsteTurno) {
+      // Si hay una sílaba y todavía NO jugamos en este turno exacto, o si ya falló una y queremos probar otra
+      if (silabaActual !== "" && (silabaActual !== silabaJugadaEnEsteTurno || reintentarMismaSilaba)) {
         // 1. Bloqueamos para no volver a jugar hasta el próximo turno
-        silabaJugadaEnEsteTurno = silabaActual; 
-        // 2. Pensar la palabra (Acá iría tu algoritmo de abecedario)
-        const palabra = encontrarPalabra(silabaActual);
-        // 3. Ejecutar la acción
+        silabaJugadaEnEsteTurno = silabaActual;
+        ultimoIntentoTimestamp = Date.now();
+
+        const yaProbadas = palabrasIntentadasPorSilaba.get(silabaActual) || [];
+        const palabra = encontrarPalabra(silabaActual, yaProbadas);
+
+        // 2. Ejecutar la acción
         if (palabra) {
+          palabrasIntentadasPorSilaba.set(silabaActual, [...yaProbadas, palabra]);
           escribirYEnviar(inputTexto, palabra);
         } else {
-          console.log("Me rindo, no encontré palabra para:", silabaActual);
+          palabrasIntentadasPorSilaba.delete(silabaActual);
+          console.log("Me rindo, no encontré más palabras para:", silabaActual);
         }
       }
     } else {
       // Si el turno pasó (es el turno de otro), reseteamos el candado
       silabaJugadaEnEsteTurno = "";
+      ultimoIntentoTimestamp = 0;
+      palabrasIntentadasPorSilaba.clear();
     }
   }, 400); 
 }
 
-function encontrarPalabra(silaba) {
+function obtenerLetrasDisponibles() {
+  const selectores = [
+    '.letter',
+    '.tile',
+    '.rack .letter',
+    '.rack .tile',
+    '.letters .letter',
+    '.letters .tile',
+    '[data-letter]',
+    '.available-letters',
+    '.letter-bank',
+    '.remaining-letters'
+  ];
+
+  const letras = new Set();
+
+  for (const selector of selectores) {
+    const nodos = document.querySelectorAll(selector);
+    if (!nodos || nodos.length === 0) continue;
+
+    nodos.forEach((nodo) => {
+      const valor = (nodo.textContent || nodo.getAttribute('data-letter') || '').trim();
+      for (const letra of valor.toLowerCase()) {
+        if (/[a-z]/.test(letra)) {
+          letras.add(letra);
+        }
+      }
+    });
+  }
+
+  return letras.size > 0 ? [...letras].join('') : null;
+}
+
+function contarLetras(texto) {
+  const conteo = {};
+
+  for (const letra of (texto || '').toLowerCase()) {
+    if (!/[a-z]/.test(letra)) continue;
+    conteo[letra] = (conteo[letra] || 0) + 1;
+  }
+
+  return conteo;
+}
+
+function puedeFormarseConLetras(palabra, letrasDisponibles) {
+  if (!letrasDisponibles) return true;
+
+  const disponibles = contarLetras(letrasDisponibles);
+  const restante = { ...disponibles };
+
+  for (const letra of palabra) {
+    if (!restante[letra]) {
+      return false;
+    }
+    restante[letra] -= 1;
+  }
+
+  return true;
+}
+
+function contarLetrasUtiles(palabra, letrasDisponibles) {
+  if (!letrasDisponibles) return palabra.length;
+
+  const disponibles = contarLetras(letrasDisponibles);
+  let utiles = 0;
+
+  for (const letra of palabra) {
+    if (!disponibles[letra]) continue;
+    utiles += 1;
+    disponibles[letra] -= 1;
+  }
+
+  return utiles;
+}
+
+function encontrarPalabra(silaba, palabrasExcluidas = []) {
   if (!diccionario.length) return null;
 
-  const candidatas = diccionario.filter((p) => p.includes(silaba));
-  return candidatas.length > 0 ? candidatas[0] : null;
+  const letrasDisponibles = obtenerLetrasDisponibles();
+  const exclusiones = new Set(palabrasExcluidas);
+
+  const candidatas = diccionario
+    .filter((p) => p.includes(silaba) && !exclusiones.has(p))
+    .sort((a, b) => {
+      if (b.length !== a.length) {
+        return b.length - a.length;
+      }
+
+      const utilesA = contarLetrasUtiles(a, letrasDisponibles);
+      const utilesB = contarLetrasUtiles(b, letrasDisponibles);
+
+      if (utilesB !== utilesA) {
+        return utilesB - utilesA;
+      }
+
+      return 0;
+    });
+
+  if (!candidatas.length) return null;
+
+  const palabrasValidas = [];
+  const inicio = Date.now();
+
+  for (const palabra of candidatas) {
+    if (Date.now() - inicio >= 2000) {
+      break;
+    }
+
+    const esValidaParaElJuego = puedeFormarseConLetras(palabra, letrasDisponibles);
+    if (!esValidaParaElJuego) {
+      continue;
+    }
+
+    palabrasValidas.push(palabra);
+  }
+
+  if (palabrasValidas.length > 0) {
+    return palabrasValidas[0];
+  }
+
+  const primeraCandidata = candidatas[0];
+  return primeraCandidata || null;
 }
 
 function escribirYEnviar(inputElement, palabra) {
