@@ -19,7 +19,7 @@ async function cargarDiccionario() {
   }
 
   diccionarioCargado = true;
-  console.log("📚 Diccionario cargado desde archivo TXT:", diccionario.length, "palabras");
+  console.log("Diccionario cargado desde archivo TXT:", diccionario.length, "palabras");
 }
 
 let botActivado = false;
@@ -32,12 +32,12 @@ chrome.runtime.onMessage.addListener(async (mensaje) => {
   if (mensaje.comando === "iniciar_bot") {
     if (!botActivado) {
       botActivado = true;
-      console.log("🤖 Bot Automático Activado. Vigilando turnos...");
+      console.log("Bot Automático Activado. Vigilando turnos...");
       if (!diccionarioCargado) {
         try {
           await cargarDiccionario();
         } catch (error) {
-          console.error("❌ Error cargando diccionario:", error);
+          console.error("Error cargando diccionario:", error);
           return;
         }
       }
