@@ -1,5 +1,6 @@
 let diccionario = [];
 let diccionarioCargado = false;
+let historialPartida = []; //Arreglo para guardar las decisiones del bot
 
 async function cargarDiccionario() {
   const respuesta = await fetch(chrome.runtime.getURL("diccionarios/diccionarioingles.txt"));
@@ -43,6 +44,11 @@ chrome.runtime.onMessage.addListener(async (mensaje) => {
       }
       iniciarVigilancia();
     }
+  }
+  
+  //Escuchar el botón de resumen desde el popup
+  if (mensaje.comando === "mostrar_resumen") {
+    mostrarResumenPartida();
   }
 });
 
@@ -205,12 +211,25 @@ function encontrarPalabra(silaba, palabrasExcluidas = []) {
     palabrasValidas.push(palabra);
   }
 
+  //Guardar la decisión en el historial ---
+  let palabraElegida = null;
   if (palabrasValidas.length > 0) {
-    return palabrasValidas[0];
+    palabraElegida = palabrasValidas[0];
+  } else {
+    const primeraCandidata = candidatas[0];
+    palabraElegida = primeraCandidata || null;
   }
 
-  const primeraCandidata = candidatas[0];
-  return primeraCandidata || null;
+  if (palabraElegida) {
+    historialPartida.push({
+      Sílaba: silaba,
+      'Palabra Elegida': palabraElegida,
+      'Letras en Pantalla': letrasDisponibles || 'Ninguna/No leídas',
+      'Otras Opciones (Top 3)': candidatas.slice(0, 3).join(', ') 
+    });
+  }
+  
+  return palabraElegida;
 }
 
 function escribirYEnviar(inputElement, palabra) {
@@ -229,4 +248,17 @@ function escribirYEnviar(inputElement, palabra) {
       bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13
     }));
   }, 150); // Un micro-retraso de 150ms lo hace parecer más "humano" y evita bugs en el juego
+}
+
+// Muestra la tabla en la consola al llamarla
+function mostrarResumenPartida() {
+  if (historialPartida.length === 0) {
+    console.log("No hay jugadas registradas en el historial todavía.");
+    return;
+  }
+  
+  console.group("Resumen de Decisiones del Bot");
+  console.log("Total de turnos jugados:", historialPartida.length);
+  console.table(historialPartida);
+  console.groupEnd();
 }
