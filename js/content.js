@@ -262,3 +262,10 @@ function mostrarResumenPartida() {
   console.table(historialPartida);
   console.groupEnd();
 }
+
+// Atajo para Firefox: Presiona F9 para ver la tabla en la consola
+window.addEventListener('keydown', (evento) => {
+  if (evento.key === 'F9') {
+    mostrarResumenPartida();
+  }
+});
