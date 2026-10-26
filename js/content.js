@@ -27,7 +27,30 @@ let botActivado = false;
 let silabaJugadaEnEsteTurno = ""; // Actúa como candado para no jugar dos veces el mismo turno
 let ultimoIntentoTimestamp = 0;
 let escrituraActiva = null;
+let writeTimers = [];
+let esperandoEnvioUsuario = false;
 const palabrasIntentadasPorSilaba = new Map();
+
+function guardarModoBotEnStorage(modo) {
+  chrome.storage && chrome.storage.local && chrome.storage.local.set({ botMode: modo });
+}
+
+function aplicarModoBot(modo) {
+  if (!modo) return;
+  configuracionBot.modo = modo;
+
+  if (modo === MODOS_BOT.manual) {
+    const inputTexto = document.querySelector('.selfTurn input');
+    if (inputTexto) {
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      nativeSetter.call(inputTexto, "");
+      inputTexto.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    esperandoEnvioUsuario = false;
+    escrituraActiva = null;
+    silabaJugadaEnEsteTurno = "";
+  }
+}
 
 const MODOS_BOT = {
   completa: "completa",
@@ -65,7 +88,8 @@ function registrarLetrasUsadas(palabra) {
 chrome.runtime.onMessage.addListener(async (mensaje) => {
   if (mensaje.comando === "iniciar_bot") {
     if (mensaje.config && mensaje.config.modo) {
-      configuracionBot.modo = mensaje.config.modo;
+      aplicarModoBot(mensaje.config.modo);
+      guardarModoBotEnStorage(mensaje.config.modo);
     }
 
     if (!botActivado) {
@@ -85,7 +109,8 @@ chrome.runtime.onMessage.addListener(async (mensaje) => {
 
   if (mensaje.comando === "configurar_bot") {
     if (mensaje.config && mensaje.config.modo) {
-      configuracionBot.modo = mensaje.config.modo;
+      aplicarModoBot(mensaje.config.modo);
+      guardarModoBotEnStorage(mensaje.config.modo);
       console.log("Configuración del bot actualizada:", configuracionBot.modo);
     }
   }
@@ -96,36 +121,61 @@ chrome.runtime.onMessage.addListener(async (mensaje) => {
   }
 });
 
+if (chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get(['botMode'], (datos) => {
+    if (datos && datos.botMode) {
+      aplicarModoBot(datos.botMode);
+    }
+  });
+
+  chrome.storage.onChanged.addListener((cambios, area) => {
+    if (area === 'local' && cambios.botMode && cambios.botMode.newValue) {
+      aplicarModoBot(cambios.botMode.newValue);
+    }
+  });
+}
+
 function iniciarVigilancia() {
   // Ejecuta esta revisión cada 400 milisegundos
   setInterval(() => {
     if (!botActivado || !diccionarioCargado) return;
 
-    // Busca los elementos. RECUERDA: Ajusta el selector del input al real.
     const divSilaba = document.querySelector('.syllable');
-    const inputTexto = document.querySelector('.selfTurn input'); // Ejemplo: suele haber una clase 'selfTurn' cuando te toca
-    
-    // Condición de turno: el input existe, está visible y no está bloqueado
+    const inputTexto = document.querySelector('.selfTurn input');
     const esMiTurno = inputTexto && inputTexto.offsetParent !== null && !inputTexto.disabled;
 
+    if (configuracionBot.modo === MODOS_BOT.manual) {
+      silabaJugadaEnEsteTurno = "";
+      return;
+    }
+
     if (esMiTurno && divSilaba) {
-      const silabaActual = divSilaba.textContent.trim().toLowerCase(); // esto es para que el bot compare siempre en minúsculas y sin espacios raros
+      const silabaActual = divSilaba.textContent.trim().toLowerCase();
       const reintentarMismaSilaba = silabaActual === silabaJugadaEnEsteTurno && Date.now() - ultimoIntentoTimestamp > 800;
 
-      if (escrituraActiva && escrituraActiva.silaba === silabaActual && !escrituraActiva.finalizada) {
+      if (!silabaActual) {
         return;
       }
 
-      // Si hay una sílaba y todavía NO jugamos en este turno exacto, o si ya falló una y queremos probar otra
+      if (configuracionBot.modo === MODOS_BOT.auto && esperandoEnvioUsuario) {
+        return;
+      }
+
+      if (escrituraActiva && escrituraActiva.silaba !== silabaActual) {
+        escrituraActiva = null;
+      }
+
+      if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
+        return;
+      }
+
       if (silabaActual !== "" && (silabaActual !== silabaJugadaEnEsteTurno || reintentarMismaSilaba)) {
-        // 1. Bloqueamos para no volver a jugar hasta el próximo turno
         silabaJugadaEnEsteTurno = silabaActual;
         ultimoIntentoTimestamp = Date.now();
 
         const yaProbadas = palabrasIntentadasPorSilaba.get(silabaActual) || [];
         const palabra = encontrarPalabra(silabaActual, yaProbadas);
 
-        // 2. Ejecutar la acción
         if (palabra) {
           palabrasIntentadasPorSilaba.set(silabaActual, [...yaProbadas, palabra]);
           escribirYEnviar(inputTexto, palabra, silabaActual);
@@ -135,10 +185,12 @@ function iniciarVigilancia() {
         }
       }
     } else {
-      // Si el turno pasó (es el turno de otro), reseteamos el candado
       silabaJugadaEnEsteTurno = "";
       ultimoIntentoTimestamp = 0;
       escrituraActiva = null;
+      esperandoEnvioUsuario = false;
+      writeTimers.forEach((timer) => clearTimeout(timer));
+      writeTimers = [];
       palabrasIntentadasPorSilaba.clear();
     }
   }, 400); 
@@ -292,50 +344,43 @@ function escribirPalabraConRetardo(inputElement, palabra, { enviarAuto = false, 
   let acumulado = 0;
 
   const finalizarEscritura = () => {
-    if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
-      escrituraActiva.finalizada = true;
-    }
     setTimeout(() => {
       if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
         escrituraActiva = null;
+        if (configuracionBot.modo === MODOS_BOT.auto) {
+          esperandoEnvioUsuario = true;
+        }
       }
-    }, 350);
+    }, 250);
   };
 
   for (const letra of letras) {
     const delay = randomEntre(configuracionBot.delayEntreLetrasMin, configuracionBot.delayEntreLetrasMax);
 
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       valorActual += letra;
       nativeSetter.call(inputElement, valorActual);
       inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+
+      if (valorActual.length === letras.length) {
+        finalizarEscritura();
+      }
     }, acumulado);
 
+    writeTimers.push(timer);
     acumulado += delay;
   }
 
   if (enviarAuto) {
-    const delayEnvio = randomEntre(configuracionBot.delayEnvioMin, configuracionBot.delayEnvioMax);
-
-    setTimeout(() => {
-      inputElement.dispatchEvent(new KeyboardEvent('keydown', {
-        bubbles: true,
-        cancelable: true,
-        key: 'Enter',
-        code: 'Enter',
-        keyCode: 13
-      }));
-      finalizarEscritura();
-    }, acumulado + delayEnvio);
-  } else {
-    setTimeout(() => {
-      finalizarEscritura();
-    }, acumulado + 120);
+    console.log("Palabra escrita y detenida para envío manual:", palabra);
   }
 }
 
 function escribirYEnviar(inputElement, palabra, silabaActual = "") {
   console.log(`Escribiendo: ${palabra} | modo: ${configuracionBot.modo}`);
+
+  writeTimers.forEach((timer) => clearTimeout(timer));
+  writeTimers = [];
 
   escrituraActiva = {
     silaba: silabaActual,
@@ -356,23 +401,29 @@ function escribirYEnviar(inputElement, palabra, silabaActual = "") {
       nativeSetter.call(inputElement, palabra);
       inputElement.dispatchEvent(new Event('input', { bubbles: true }));
       setTimeout(() => {
-        inputElement.dispatchEvent(new KeyboardEvent('keydown', {
-          bubbles: true,
-          cancelable: true,
-          key: 'Enter',
-          code: 'Enter',
-          keyCode: 13
-        }));
-        setTimeout(() => {
-          if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
-            escrituraActiva.finalizada = true;
-          }
+        if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
           escrituraActiva = null;
-        }, 250);
-      }, 150);
+          if (configuracionBot.modo === MODOS_BOT.auto) {
+            esperandoEnvioUsuario = true;
+          }
+        }
+      }, 250);
       break;
   }
 }
+
+function resetearEsperaUsuario() {
+  esperandoEnvioUsuario = false;
+  escrituraActiva = null;
+  silabaJugadaEnEsteTurno = "";
+}
+
+window.addEventListener('keydown', (evento) => {
+  if (evento.key === 'Enter' && configuracionBot.modo === MODOS_BOT.auto && esperandoEnvioUsuario) {
+    resetearEsperaUsuario();
+  }
+});
+
 
 // Muestra la tabla en la consola al llamarla
 function mostrarResumenPartida() {

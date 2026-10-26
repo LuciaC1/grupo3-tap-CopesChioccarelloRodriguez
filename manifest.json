@@ -5,7 +5,8 @@
   "description": "Agente autonomo para BombParty",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "host_permissions": [
     "*://*.jklm.fun/*"
