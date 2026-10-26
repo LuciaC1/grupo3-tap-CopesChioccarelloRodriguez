@@ -26,14 +26,51 @@ async function cargarDiccionario() {
 let botActivado = false;
 let silabaJugadaEnEsteTurno = ""; // Actúa como candado para no jugar dos veces el mismo turno
 let ultimoIntentoTimestamp = 0;
+let escrituraActiva = null;
 const palabrasIntentadasPorSilaba = new Map();
+
+const MODOS_BOT = {
+  completa: "completa",
+  auto: "auto",
+  manual: "manual"
+};
+
+const configuracionBot = {
+  modo: MODOS_BOT.completa,
+  delayEntreLetrasMin: 70,
+  delayEntreLetrasMax: 200,
+  delayEnvioMin: 250,
+  delayEnvioMax: 1200
+};
+
+let letrasUsadasEnPartida = {};
+
+function randomEntre(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
+function registrarLetrasUsadas(palabra) {
+  if (!palabra) return [];
+
+  const letras = [...new Set(palabra.toLowerCase().replace(/[^a-z]/g, ""))];
+
+  for (const letra of letras) {
+    letrasUsadasEnPartida[letra] = (letrasUsadasEnPartida[letra] || 0) + 1;
+  }
+
+  return letras;
+}
 
 // Escuchamos la señal del botón "¡Jugar!" del popup
 chrome.runtime.onMessage.addListener(async (mensaje) => {
   if (mensaje.comando === "iniciar_bot") {
+    if (mensaje.config && mensaje.config.modo) {
+      configuracionBot.modo = mensaje.config.modo;
+    }
+
     if (!botActivado) {
       botActivado = true;
-      console.log("Bot Automático Activado. Vigilando turnos...");
+      console.log(`Bot Automático Activado en modo: ${configuracionBot.modo}. Vigilando turnos...`);
       if (!diccionarioCargado) {
         try {
           await cargarDiccionario();
@@ -43,6 +80,13 @@ chrome.runtime.onMessage.addListener(async (mensaje) => {
         }
       }
       iniciarVigilancia();
+    }
+  }
+
+  if (mensaje.comando === "configurar_bot") {
+    if (mensaje.config && mensaje.config.modo) {
+      configuracionBot.modo = mensaje.config.modo;
+      console.log("Configuración del bot actualizada:", configuracionBot.modo);
     }
   }
   
@@ -68,6 +112,10 @@ function iniciarVigilancia() {
       const silabaActual = divSilaba.textContent.trim().toLowerCase(); // esto es para que el bot compare siempre en minúsculas y sin espacios raros
       const reintentarMismaSilaba = silabaActual === silabaJugadaEnEsteTurno && Date.now() - ultimoIntentoTimestamp > 800;
 
+      if (escrituraActiva && escrituraActiva.silaba === silabaActual && !escrituraActiva.finalizada) {
+        return;
+      }
+
       // Si hay una sílaba y todavía NO jugamos en este turno exacto, o si ya falló una y queremos probar otra
       if (silabaActual !== "" && (silabaActual !== silabaJugadaEnEsteTurno || reintentarMismaSilaba)) {
         // 1. Bloqueamos para no volver a jugar hasta el próximo turno
@@ -80,7 +128,7 @@ function iniciarVigilancia() {
         // 2. Ejecutar la acción
         if (palabra) {
           palabrasIntentadasPorSilaba.set(silabaActual, [...yaProbadas, palabra]);
-          escribirYEnviar(inputTexto, palabra);
+          escribirYEnviar(inputTexto, palabra, silabaActual);
         } else {
           palabrasIntentadasPorSilaba.delete(silabaActual);
           console.log("Me rindo, no encontré más palabras para:", silabaActual);
@@ -90,6 +138,7 @@ function iniciarVigilancia() {
       // Si el turno pasó (es el turno de otro), reseteamos el candado
       silabaJugadaEnEsteTurno = "";
       ultimoIntentoTimestamp = 0;
+      escrituraActiva = null;
       palabrasIntentadasPorSilaba.clear();
     }
   }, 400); 
@@ -190,7 +239,7 @@ function encontrarPalabra(silaba, palabrasExcluidas = []) {
         return utilesB - utilesA;
       }
 
-      return 0;
+      return Math.random() - 0.5;
     });
 
   if (!candidatas.length) return null;
@@ -211,43 +260,118 @@ function encontrarPalabra(silaba, palabrasExcluidas = []) {
     palabrasValidas.push(palabra);
   }
 
-  //Guardar la decisión en el historial ---
   let palabraElegida = null;
   if (palabrasValidas.length > 0) {
-    palabraElegida = palabrasValidas[0];
+    palabraElegida = palabrasValidas[Math.floor(Math.random() * Math.min(3, palabrasValidas.length))];
   } else {
     const primeraCandidata = candidatas[0];
     palabraElegida = primeraCandidata || null;
   }
 
   if (palabraElegida) {
+    const letrasUsadas = registrarLetrasUsadas(palabraElegida);
+
     historialPartida.push({
       Sílaba: silaba,
       'Palabra Elegida': palabraElegida,
       'Letras en Pantalla': letrasDisponibles || 'Ninguna/No leídas',
-      'Otras Opciones (Top 3)': candidatas.slice(0, 3).join(', ') 
+      'Letras Usadas': letrasUsadas.join(', ') || 'Ninguna',
+      'Letras Totales Usadas': JSON.stringify(letrasUsadasEnPartida),
+      'Otras Opciones (Top 3)': candidatas.slice(0, 3).join(', ')
     });
   }
   
   return palabraElegida;
 }
 
-function escribirYEnviar(inputElement, palabra) {
-  console.log(`Escribiendo: ${palabra}`);
-  
-  // El truco del setter nativo para sortear React/Vue
+function escribirPalabraConRetardo(inputElement, palabra, { enviarAuto = false, silabaActual = "" } = {}) {
   const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-  nativeSetter.call(inputElement, palabra);
-  
-  // Avisamos al juego que el input cambió
-  inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-  
-  // Simulamos el Enter
-  setTimeout(() => {
-    inputElement.dispatchEvent(new KeyboardEvent('keydown', {
-      bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13
-    }));
-  }, 150); // Un micro-retraso de 150ms lo hace parecer más "humano" y evita bugs en el juego
+  let valorActual = "";
+
+  const letras = [...palabra];
+  let acumulado = 0;
+
+  const finalizarEscritura = () => {
+    if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
+      escrituraActiva.finalizada = true;
+    }
+    setTimeout(() => {
+      if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
+        escrituraActiva = null;
+      }
+    }, 350);
+  };
+
+  for (const letra of letras) {
+    const delay = randomEntre(configuracionBot.delayEntreLetrasMin, configuracionBot.delayEntreLetrasMax);
+
+    setTimeout(() => {
+      valorActual += letra;
+      nativeSetter.call(inputElement, valorActual);
+      inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+    }, acumulado);
+
+    acumulado += delay;
+  }
+
+  if (enviarAuto) {
+    const delayEnvio = randomEntre(configuracionBot.delayEnvioMin, configuracionBot.delayEnvioMax);
+
+    setTimeout(() => {
+      inputElement.dispatchEvent(new KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13
+      }));
+      finalizarEscritura();
+    }, acumulado + delayEnvio);
+  } else {
+    setTimeout(() => {
+      finalizarEscritura();
+    }, acumulado + 120);
+  }
+}
+
+function escribirYEnviar(inputElement, palabra, silabaActual = "") {
+  console.log(`Escribiendo: ${palabra} | modo: ${configuracionBot.modo}`);
+
+  escrituraActiva = {
+    silaba: silabaActual,
+    palabra,
+    finalizada: false
+  };
+
+  switch (configuracionBot.modo) {
+    case MODOS_BOT.manual:
+      escribirPalabraConRetardo(inputElement, palabra, { enviarAuto: false, silabaActual });
+      break;
+    case MODOS_BOT.auto:
+      escribirPalabraConRetardo(inputElement, palabra, { enviarAuto: true, silabaActual });
+      break;
+    case MODOS_BOT.completa:
+    default:
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      nativeSetter.call(inputElement, palabra);
+      inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+      setTimeout(() => {
+        inputElement.dispatchEvent(new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13
+        }));
+        setTimeout(() => {
+          if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
+            escrituraActiva.finalizada = true;
+          }
+          escrituraActiva = null;
+        }, 250);
+      }, 150);
+      break;
+  }
 }
 
 // Muestra la tabla en la consola al llamarla
