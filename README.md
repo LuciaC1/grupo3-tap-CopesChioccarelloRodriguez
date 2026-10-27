@@ -1,71 +1,88 @@
-# Extensión para JKLM.fun (Firefox)
+# JKLM Bot
 
-Esta extensión de Firefox permite automatizar la búsqueda y selección de palabras durante las partidas de BombParty en JKLM.fun.
+Extensión para Mozilla Firefox que automatiza la búsqueda y selección de palabras
+durante las partidas de BombParty en [JKLM.fun](https://jklm.fun/).
 
-El bot mantiene un ciclo de letras de la `A` a la `Z`. Al elegir una palabra,
-prioriza las opciones que consumen más letras que todavía no fueron utilizadas
-en el ciclo actual. Las letras de la palabra se quitan del ciclo y, cuando ya
-no queda ninguna, el ciclo vuelve a comenzar desde la `A`.
+El bot mantiene un ciclo de letras de la `A` a la `Z` y prioriza las palabras que
+consumen más letras que todavía no fueron utilizadas en el ciclo actual. Cuando
+el ciclo se agota, vuelve a comenzar desde la `A`.
 
----
+## Funcionalidades
 
-## Guía de Instalación y Uso
+- **Dos modos de escritura:**
+  - **Completa:** escribe la palabra de una sola vez.
+  - **Auto:** escribe la palabra letra por letra.
+- **Demora configurable:** permite establecer un rango de espera de entre `0` y
+  `10` segundos antes de enviar la palabra.
+- **Control en caliente:** el bot puede encenderse, apagarse o reconfigurarse
+  sin reiniciar la extensión.
+- **Informe de la partida:** registra las decisiones tomadas y los tiempos de
+  cada jugada.
 
-Pasos para cargar y probar temporalmente la extensión en Mozilla Firefox:
+## Instalación
 
-### 1. Cargar la extensión en Firefox
-1. Abrir Firefox y entrar a la siguiente dirección:
-   `about:debugging#/runtime/this-firefox`
-2. Buscar la opción **"Cargar complemento temporal..."**.
-3. Seleccionar y subir el archivo `manifest.json` ubicado en la carpeta raíz del proyecto.
-4. Verificar que la extensión aparezca en la lista de extensiones cargadas temporalmente. Si se hacen cambios en el código, se puede recargar la extensión haciendo clic en el botón **"Recargar"**. 
-5. Verificar en el ícono de extensiones (arriba a la derecha) que la extensión esté activa y visible.
+La extensión se carga temporalmente desde Firefox:
 
----
+1. Abrir `about:debugging#/runtime/this-firefox`.
+2. Seleccionar **Cargar complemento temporal...**.
+3. Elegir el archivo `manifest.json` ubicado en la raíz del proyecto.
+4. Confirmar que **JKLM Bot** aparezca entre las extensiones cargadas.
 
-### 2. Unirse a una partida
-1. Entrar al sitio web oficial del juego: [https://jklm.fun/](https://jklm.fun/)
-2. Unirse a una partida. 
-   > **Consejo de prueba:** Para probarla rápidamente, se puede utilizar una sala con un bot existente. Suelen tener la palabra **bot** en el nombre de la sala (por ejemplo: `BirdBot`).
+Para aplicar cambios realizados en el código, utilizar el botón **Recargar** de
+la extensión.
 
----
+## Uso
 
-### 3. Activar la extensión
-1. Hacer clic en el ícono de extensiones de Firefox y buscar la extensión.
-2. Elegir el modo:
-   * **Completa:** escribe la palabra entera de una vez.
-   * **Auto:** la escribe letra por letra, como una persona.
-3. Al momento de darle a **"Unirse al juego"** en la sala, en el pop-up de la extensión hacer clic en **"▶ Encender bot"**.
-   El mismo botón pasa a decir **"⏹ Apagar bot"**: al apagarlo, el bot deja de jugar enseguida
-   (si estaba por enviar una palabra, la cancela y la borra). Si recargás la página con el bot
-   encendido, vuelve a arrancar solo.
-4. Esperar a que encuentre la partida y comience a elegir palabras de forma automática.
+1. Ingresar a [JKLM.fun](https://jklm.fun/) y unirse a una partida.
+2. Abrir el menú de extensiones de Firefox y seleccionar **JKLM Bot**.
+3. Elegir el modo de escritura y configurar, si se desea, los valores mínimo y
+   máximo de la demora.
+4. Durante la partida, seleccionar **▶ Encender bot**.
+5. Para detenerlo, seleccionar **⏹ Apagar bot**. Si había una palabra pendiente
+   de envío, se cancela.
 
-### 4. Demora antes de enviar
-En el pop-up se puede configurar un rango en segundos (por ejemplo, entre `0.5` y `3.5`).
-En cada turno el bot sortea un tiempo al azar dentro de ese rango: es el tiempo **total** desde que
-empieza a escribir la palabra hasta que la envía. Funciona en los dos modos:
+Si la página se recarga mientras el bot está encendido, la extensión retoma su
+funcionamiento automáticamente.
 
-* **Completa:** escribe la palabra de una vez y la envía cuando se cumple ese tiempo.
-* **Auto:** la escribe letra por letra y el tipeo cuenta dentro de ese tiempo. Si tipear a velocidad
-  normal no entra (por ejemplo, palabra larga con un rango corto), tipea más rápido para llegar.
+### Demora de envío
 
-* Si el mínimo es mayor que el máximo, se dan vuelta automáticamente. El máximo permitido es 10 s.
-* Los cambios se aplican en caliente, sin reiniciar el bot.
-* Si el turno termina mientras el bot espera, la palabra no se envía.
-* Ojo: si la demora es muy larga, la bomba puede explotar antes del envío.
+En cada turno se sortea una demora dentro del rango configurado. El tiempo
+representa el total transcurrido desde que comienza la escritura hasta que se
+envía la palabra:
 
-### 5. Ver el informe de la partida
-En el pop-up, el botón **"📊 Ver último informe"** abre una pestaña con una tabla de todas las
-jugadas de la última partida: sílaba, palabra elegida, letras del ciclo consumidas, otras opciones
-consideradas, demora de envío y tiempo tipeando.
+- En modo **Completa**, la palabra se escribe de una vez y se envía al finalizar
+  la demora.
+- En modo **Auto**, el tiempo de tipeo está incluido en la demora total. Si el
+  rango es demasiado corto para escribir a velocidad normal, el bot ajusta la
+  velocidad para respetarlo.
 
-* El informe se guarda en cada turno, así que se puede abrir durante la partida o después.
-* Si la pestaña queda abierta mientras se juega, se actualiza sola.
-* Al empezar una partida nueva, el informe arranca de cero.
+Si los valores se ingresan invertidos, se ordenan automáticamente. Si el turno
+termina antes del envío, la palabra no se envía.
 
----
+## Métricas e informe
+
+El botón **📊 Ver último informe** abre una pestaña con el detalle de la partida.
+El informe se guarda después de cada turno, puede consultarse mientras la partida
+está en curso y se actualiza automáticamente si la pestaña permanece abierta.
+
+Para cada jugada se registran las siguientes métricas:
+
+| Métrica | Descripción |
+| --- | --- |
+| Sílaba | Secuencia de letras solicitada por el juego. |
+| Palabra elegida | Palabra seleccionada por el bot. |
+| Letras del ciclo consumidas | Letras nuevas que la palabra quitó del ciclo actual. |
+| Letras pendientes después de jugar | Letras que todavía quedan disponibles en el ciclo. |
+| Ciclo de letras | Número del ciclo en el que se realizó la jugada. |
+| Letras totales usadas | Letras consumidas acumuladas durante la partida. |
+| Otras opciones (Top 3) | Hasta tres alternativas consideradas por el bot. |
+| Demora de envío | Tiempo total, en segundos, hasta enviar la palabra. |
+| Tiempo tipeando | Tiempo empleado en escribirla en modo **Auto**. |
+
+El informe corresponde únicamente a la última partida: al comenzar una nueva,
+las métricas anteriores se reemplazan.
 
 ## Requisitos
-* Navegador **Mozilla Firefox**.
-* Archivo `manifest.json` y demás archivos del proyecto descargados localmente.
+
+- Mozilla Firefox.
+- Una copia local de este repositorio.
