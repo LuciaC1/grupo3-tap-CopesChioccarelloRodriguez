@@ -7,7 +7,7 @@
 
   "browser_specific_settings": {
   "gecko": {
-    "id": "jkml-bot@tu-proyecto.com",
+    "id": "jkml-bot@tap-proyecto.com",
     "data_collection_permissions": {
       "required": ["none"]
       }
