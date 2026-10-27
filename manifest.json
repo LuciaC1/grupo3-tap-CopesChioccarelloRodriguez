@@ -1,8 +1,16 @@
+
 {
   "manifest_version": 3,
   "name": "JKLM Bot",
   "version": "1.0",
   "description": "Agente autonomo para BombParty",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "jkml-bot@tu-proyecto.com"
+    }
+  },
+
   "permissions": [
     "activeTab",
     "scripting",
@@ -28,6 +36,6 @@
     }
   ],
   "icons": {
-    "48" : "icons/icon48.png"
+    "48": "icons/icon48.png"
   }
 }
