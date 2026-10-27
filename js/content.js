@@ -66,22 +66,58 @@ const configuracionBot = {
   delayEnvioMax: 1200
 };
 
+const ALFABETO = [..."abcdefghijklmnopqrstuvwxyz"];
+let letrasPendientes = [...ALFABETO];
 let letrasUsadasEnPartida = {};
+let numeroCicloLetras = 1;
 
 function randomEntre(min, max) {
   return Math.random() * (max - min) + min;
 }
 
-function registrarLetrasUsadas(palabra) {
+function obtenerLetrasPendientes() {
+  return letrasPendientes.join("");
+}
+
+function obtenerLetrasUnicas(palabra) {
+  const letrasEncontradas = [];
+  const palabraEnMinusculas = palabra.toLowerCase();
+
+  for (const caracter of palabraEnMinusculas) {
+    const esLetra = /^[a-z]$/.test(caracter);
+    const yaFueAgregada = letrasEncontradas.includes(caracter);
+
+    if (esLetra && !yaFueAgregada) {
+      letrasEncontradas.push(caracter);
+    }
+  }
+
+  return letrasEncontradas;
+}
+
+function consumirLetrasDePalabra(palabra) {
   if (!palabra) return [];
 
-  const letras = [...new Set(palabra.toLowerCase().replace(/[^a-z]/g, ""))];
+  const letras = obtenerLetrasUnicas(palabra);
+  const letrasConsumidas = [];
 
   for (const letra of letras) {
     letrasUsadasEnPartida[letra] = (letrasUsadasEnPartida[letra] || 0) + 1;
+
+    const indice = letrasPendientes.indexOf(letra);
+    if (indice === -1) continue;
+
+    letrasPendientes.splice(indice, 1);
+    letrasConsumidas.push(letra);
   }
 
-  return letras;
+  if (letrasPendientes.length === 0) {
+    letrasPendientes = [...ALFABETO];
+    numeroCicloLetras += 1;
+    console.log("Se completó el alfabeto. Comenzando un nuevo ciclo de letras.");
+  }
+
+  return letrasConsumidas;
 }
 
 // Escuchamos la señal del botón "¡Jugar!" del popup
@@ -271,6 +307,13 @@ function contarLetrasUtiles(palabra, letrasDisponibles) {
   return utiles;
 }
 
+function contarLetrasPendientesUtiles(palabra) {
+  const pendientes = new Set(letrasPendientes);
+  const letras = obtenerLetrasUnicas(palabra);
+
+  return letras.filter((letra) => pendientes.has(letra)).length;
+}
+
 function encontrarPalabra(silaba, palabrasExcluidas = []) {
   if (!diccionario.length) return null;
 
@@ -280,6 +323,13 @@ function encontrarPalabra(silaba, palabrasExcluidas = []) {
   const candidatas = diccionario
     .filter((p) => p.includes(silaba) && !exclusiones.has(p))
     .sort((a, b) => {
+      const pendientesA = contarLetrasPendientesUtiles(a);
+      const pendientesB = contarLetrasPendientesUtiles(b);
+
+      if (pendientesB !== pendientesA) {
+        return pendientesB - pendientesA;
+      }
+
       if (b.length !== a.length) {
         return b.length - a.length;
       }
@@ -312,22 +362,21 @@ function encontrarPalabra(silaba, palabrasExcluidas = []) {
     palabrasValidas.push(palabra);
   }
 
-  let palabraElegida = null;
-  if (palabrasValidas.length > 0) {
-    palabraElegida = palabrasValidas[Math.floor(Math.random() * Math.min(3, palabrasValidas.length))];
-  } else {
-    const primeraCandidata = candidatas[0];
-    palabraElegida = primeraCandidata || null;
-  }
+  const palabraElegida = palabrasValidas[0] || candidatas[0] || null;
 
   if (palabraElegida) {
-    const letrasUsadas = registrarLetrasUsadas(palabraElegida);
+    const letrasAntesDeConsumir = obtenerLetrasPendientes();
+    const cicloAntesDeConsumir = numeroCicloLetras;
+    const letrasUsadas = consumirLetrasDePalabra(palabraElegida);
 
     historialPartida.push({
       Sílaba: silaba,
       'Palabra Elegida': palabraElegida,
       'Letras en Pantalla': letrasDisponibles || 'Ninguna/No leídas',
-      'Letras Usadas': letrasUsadas.join(', ') || 'Ninguna',
+      'Letras del Ciclo Consumidas': letrasUsadas.join(', ') || 'Ninguna',
+      'Letras Pendientes Antes de Jugar': letrasAntesDeConsumir || 'Ninguna',
+      'Letras Pendientes Después de Jugar': obtenerLetrasPendientes(),
+      'Ciclo de Letras': cicloAntesDeConsumir,
       'Letras Totales Usadas': JSON.stringify(letrasUsadasEnPartida),
       'Otras Opciones (Top 3)': candidatas.slice(0, 3).join(', ')
     });

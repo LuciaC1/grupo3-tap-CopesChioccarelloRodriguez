@@ -2,6 +2,11 @@
 
 Esta extensión de Firefox permite automatizar la búsqueda y selección de palabras durante las partidas de BombParty en JKLM.fun.
 
+El bot mantiene un ciclo de letras de la `A` a la `Z`. Al elegir una palabra,
+prioriza las opciones que consumen más letras que todavía no fueron utilizadas
+en el ciclo actual. Las letras de la palabra se quitan del ciclo y, cuando ya
+no queda ninguna, el ciclo vuelve a comenzar desde la `A`.
+
 ---
 
 ## Guía de Instalación y Uso
