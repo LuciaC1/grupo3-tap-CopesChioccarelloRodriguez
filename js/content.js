@@ -1,6 +1,39 @@
 let diccionario = [];
 let diccionarioCargado = false;
 let historialPartida = []; //Arreglo para guardar las decisiones del bot
+let inicioPartida = Date.now();
+let estabaEnPartida = false;
+
+// Guarda el informe de la partida actual en el almacenamiento de la extensión,
+// para que el popup lo pueda abrir con "Ver último informe" (html/informe.html).
+function guardarUltimoInforme() {
+  if (!chrome.storage || !chrome.storage.local) return;
+
+  chrome.storage.local.set({
+    ultimoInforme: {
+      inicio: inicioPartida,
+      actualizado: Date.now(),
+      modo: configuracionBot.modo,
+      demoraMin: configuracionBot.delayEnvioMin,
+      demoraMax: configuracionBot.delayEnvioMax,
+      jugadas: historialPartida
+    }
+  });
+}
+
+// Detecta el comienzo de una partida nueva: el panel "Unirse al juego" (.bottom .seating)
+// se oculta mientras se juega. Al empezar otra partida, el informe arranca de cero.
+function revisarNuevaPartida() {
+  const seating = document.querySelector('.bottom .seating');
+  if (!seating) return; // este frame no es el del juego
+
+  const enPartida = seating.hidden;
+  if (enPartida && !estabaEnPartida) {
+    historialPartida = [];
+    inicioPartida = Date.now();
+  }
+  estabaEnPartida = enPartida;
+}
 
 async function cargarDiccionario() {
   const respuesta = await fetch(chrome.runtime.getURL("diccionarios/diccionarioingles.txt"));
@@ -206,6 +239,8 @@ function iniciarVigilancia() {
   setInterval(() => {
     if (!botActivado || !diccionarioCargado) return;
 
+    revisarNuevaPartida();
+
     const divSilaba = document.querySelector('.syllable');
     const inputTexto = document.querySelector('.selfTurn input');
     const esMiTurno = inputTexto && inputTexto.offsetParent !== null && !inputTexto.disabled;
@@ -396,7 +431,6 @@ function encontrarPalabra(silaba, palabrasExcluidas = []) {
     historialPartida.push({
       Sílaba: silaba,
       'Palabra Elegida': palabraElegida,
-      'Letras en Pantalla': letrasDisponibles || 'Ninguna/No leídas',
       'Letras del Ciclo Consumidas': letrasUsadas.join(', ') || 'Ninguna',
       'Letras Pendientes Antes de Jugar': letrasAntesDeConsumir || 'Ninguna',
       'Letras Pendientes Después de Jugar': obtenerLetrasPendientes(),
@@ -404,49 +438,68 @@ function encontrarPalabra(silaba, palabrasExcluidas = []) {
       'Letras Totales Usadas': JSON.stringify(letrasUsadasEnPartida),
       'Otras Opciones (Top 3)': candidatas.slice(0, 3).join(', ')
     });
+    guardarUltimoInforme();
   }
   
   return palabraElegida;
 }
 
+const MARGEN_ANTES_DE_ENVIAR = 150; // ms entre la última letra y el Enter
+
+// Escribe la palabra letra por letra. En modo auto, todo (tipeo + envío) tiene que entrar
+// en un tiempo total sorteado del rango del popup: si tipear tardaría más, se tipea más rápido.
 function escribirPalabraConRetardo(inputElement, palabra, { enviarAuto = false, silabaActual = "" } = {}) {
   const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-  let valorActual = "";
-
   const letras = [...palabra];
-  let acumulado = 0;
 
-  const finalizarEscritura = () => {
-    if (enviarAuto) {
-      // Modo auto: terminó de tipear, ahora espera la demora al azar y envía solo
-      programarEnvio(inputElement, palabra, silabaActual);
-      return;
+  // 1. Planificamos de antemano cuánto esperar antes de cada letra (la primera sale enseguida)
+  let pausas = letras.map((_, i) =>
+    i === 0 ? 0 : randomEntre(configuracionBot.delayEntreLetrasMin, configuracionBot.delayEntreLetrasMax)
+  );
+  let tiempoTipeo = pausas.reduce((total, pausa) => total + pausa, 0);
+
+  let tiempoTotal = null;
+  if (enviarAuto) {
+    // 2. Sorteamos el tiempo TOTAL (desde que empieza a escribir hasta que envía)
+    tiempoTotal = randomEntre(configuracionBot.delayEnvioMin, configuracionBot.delayEnvioMax);
+
+    // 3. Si tipear a velocidad normal no entra, comprimimos las pausas proporcionalmente
+    const tiempoParaTipear = Math.max(0, tiempoTotal - MARGEN_ANTES_DE_ENVIAR);
+    if (tiempoTipeo > tiempoParaTipear) {
+      const factor = tiempoTipeo > 0 ? tiempoParaTipear / tiempoTipeo : 0;
+      pausas = pausas.map((pausa) => pausa * factor);
+      tiempoTipeo = tiempoParaTipear;
     }
+  }
 
-    setTimeout(() => {
-      if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
-        escrituraActiva = null;
-      }
-    }, 250);
-  };
-
-  for (const letra of letras) {
-    const delay = randomEntre(configuracionBot.delayEntreLetrasMin, configuracionBot.delayEntreLetrasMax);
-
+  // 4. Programamos cada letra
+  let acumulado = 0;
+  let valorActual = "";
+  letras.forEach((letra, i) => {
+    acumulado += pausas[i];
     const timer = setTimeout(() => {
       valorActual += letra;
       nativeSetter.call(inputElement, valorActual);
       inputElement.dispatchEvent(new Event('input', { bubbles: true }));
 
-      if (valorActual.length === letras.length) {
-        finalizarEscritura();
+      if (!enviarAuto && valorActual.length === letras.length) {
+        setTimeout(() => {
+          if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
+            escrituraActiva = null;
+          }
+        }, 250);
       }
     }, acumulado);
-
     writeTimers.push(timer);
-    acumulado += delay;
-  }
+  });
 
+  // 5. El envío se programa YA, contando desde ahora: así el total respeta el rango
+  if (enviarAuto) {
+    programarEnvio(inputElement, palabra, silabaActual, {
+      demora: tiempoTotal,
+      tiempoTipeo
+    });
+  }
 }
 
 // ---------------- Envío ----------------
@@ -468,22 +521,37 @@ function sigueSiendoMiTurno(inputElement) {
   return inputElement.isConnected && inputElement.offsetParent !== null && !inputElement.disabled;
 }
 
-// Espera un tiempo al azar entre delayEnvioMin y delayEnvioMax y envía la palabra.
-function programarEnvio(inputElement, palabra, silabaActual) {
-  const demora = randomEntre(configuracionBot.delayEnvioMin, configuracionBot.delayEnvioMax);
+// Envía la palabra después de "demora" ms, contados desde que empezó a escribirla.
+// Si no se pasa la demora, se sortea entre delayEnvioMin y delayEnvioMax.
+function programarEnvio(inputElement, palabra, silabaActual, { demora = null, tiempoTipeo = 0 } = {}) {
+  if (demora === null) {
+    demora = randomEntre(configuracionBot.delayEnvioMin, configuracionBot.delayEnvioMax);
+  }
 
-  // Guardamos la demora en la última jugada del historial (la que se acaba de elegir)
+  // Guardamos los tiempos en la última jugada del historial (la que se acaba de elegir)
   const jugada = historialPartida[historialPartida.length - 1];
   if (jugada && jugada['Palabra Elegida'] === palabra) {
     jugada['Demora de Envío (s)'] = (demora / 1000).toFixed(2);
+    if (tiempoTipeo > 0) {
+      jugada['Tiempo Tipeando (s)'] = (tiempoTipeo / 1000).toFixed(2);
+    }
+    guardarUltimoInforme();
   }
 
-  console.log(`"${palabra}" se envía en ${(demora / 1000).toFixed(2)} s`);
+  console.log(`"${palabra}" se envía en ${(demora / 1000).toFixed(2)} s` +
+    (tiempoTipeo > 0 ? ` (tipeo: ${(tiempoTipeo / 1000).toFixed(2)} s)` : ""));
 
   const timer = setTimeout(() => {
     // Si mientras esperábamos terminó el turno o cambió la sílaba, no enviamos nada
     if (!escrituraActiva || escrituraActiva.silaba !== silabaActual) return;
     if (!sigueSiendoMiTurno(inputElement)) return;
+
+    // Por seguridad: si por algún motivo no terminó de tipear, completamos la palabra
+    if (inputElement.value !== palabra) {
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      nativeSetter.call(inputElement, palabra);
+      inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+    }
 
     enviarPalabra(inputElement);
 
@@ -551,10 +619,3 @@ function mostrarResumenPartida() {
   console.table(historialPartida);
   console.groupEnd();
 }
-
-// Atajo para Firefox: Presiona F9 para ver la tabla en la consola
-window.addEventListener('keydown', (evento) => {
-  if (evento.key === 'F9') {
-    mostrarResumenPartida();
-  }
-});

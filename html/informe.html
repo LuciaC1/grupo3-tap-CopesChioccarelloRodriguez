@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Último informe - JKLM Bot</title>
+  <style>
+    body { margin: 0; padding: 20px; font: 13px system-ui, sans-serif; background: #f4f4f4; color: #111; }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    #resumen { margin: 0 0 14px; color: #333; }
+    #contenedor { background: #fff; padding: 12px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.15); overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 5px 7px; text-align: left; vertical-align: top; }
+    th { background: #eee; position: sticky; top: 0; }
+    tr:nth-child(even) td { background: #fafafa; }
+    .vacio { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>📊 Último informe del bot</h1>
+  <p id="resumen"></p>
+  <div id="contenedor"><p class="vacio">Todavía no hay jugadas guardadas. Jugá una partida con el bot y volvé a abrir el informe.</p></div>
+
+  <script src="../js/informe.js"></script>
+</body>
+</html>

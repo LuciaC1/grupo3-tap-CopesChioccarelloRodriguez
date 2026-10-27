@@ -61,6 +61,12 @@ radioButtons.forEach((radio) => {
   });
 });
 
+// Abre en una pestaña nueva la página con el informe de la última partida
+document.getElementById('btn-informe').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('html/informe.html') });
+  window.close();
+});
+
 document.getElementById('btn-jugar').addEventListener('click', () => {
   const modoSeleccionado = document.querySelector('input[name="modo-bot"]:checked')?.value || 'completa';
   document.getElementById('estado').innerText = `Bot activado en modo ${modoSeleccionado}. Buscando partida...`;

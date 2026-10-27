@@ -49,6 +49,15 @@ empieza a escribir la palabra hasta que la envía. Funciona en los dos modos:
 * Si el turno termina mientras el bot espera, la palabra no se envía.
 * Ojo: si la demora es muy larga, la bomba puede explotar antes del envío.
 
+### 5. Ver el informe de la partida
+En el pop-up, el botón **"📊 Ver último informe"** abre una pestaña con una tabla de todas las
+jugadas de la última partida: sílaba, palabra elegida, letras del ciclo consumidas, otras opciones
+consideradas, demora de envío y tiempo tipeando.
+
+* El informe se guarda en cada turno, así que se puede abrir durante la partida o después.
+* Si la pestaña queda abierta mientras se juega, se actualiza sola.
+* Al empezar una partida nueva, el informe arranca de cero.
+
 ---
 
 ## Requisitos
