@@ -11,6 +11,12 @@
     }
     button:hover { background-color: #005A9E; }
     #estado { margin-top: 15px; font-size: 14px; color: #555; }
+    fieldset { margin: 12px 0; padding: 8px 10px; border: 1px solid #ccc; border-radius: 5px; }
+    legend { font-size: 13px; font-weight: bold; padding: 0 4px; }
+    .rango { display: flex; gap: 8px; }
+    .rango label { flex: 1; font-size: 13px; }
+    .rango input { width: 100%; box-sizing: border-box; padding: 4px; }
+    #ayuda-demora { margin-top: 6px; font-size: 12px; color: #666; }
   </style>
 </head>
 <body>
@@ -21,6 +27,15 @@
     <label><input type="radio" name="modo-bot" value="auto"> Auto</label><br>
     <label><input type="radio" name="modo-bot" value="manual"> Manual</label>
   </div>
+
+  <fieldset>
+    <legend>⏱️ Demora antes de enviar (seg)</legend>
+    <div class="rango">
+      <label>Mín <input id="delay-min" type="number" min="0" max="10" step="0.1" value="0.5"></label>
+      <label>Máx <input id="delay-max" type="number" min="0" max="10" step="0.1" value="3.5"></label>
+    </div>
+    <div id="ayuda-demora">Envía entre 0.5 y 3.5 s al azar</div>
+  </fieldset>
 
   <button id="btn-jugar">¡Jugar!</button>
   <div id="estado">Esperando orden...</div>

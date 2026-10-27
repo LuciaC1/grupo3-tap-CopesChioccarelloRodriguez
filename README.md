@@ -35,6 +35,20 @@ Pasos para cargar y probar temporalmente la extensión en Mozilla Firefox:
 2. Al momento de darle a **"Unirse al juego"** en la sala, en el pop-up de la extensión hacer clic en **"Jugar"**.
 3. Esperar a que encuentre la partida y comience a elegir palabras de forma automática.
 
+### 4. Demora antes de enviar
+En el pop-up se puede configurar un rango en segundos (por ejemplo, entre `0.5` y `3.5`).
+En cada turno el bot sortea un tiempo al azar dentro de ese rango: es el tiempo **total** desde que
+empieza a escribir la palabra hasta que la envía. Funciona en los dos modos:
+
+* **Completa:** escribe la palabra de una vez y la envía cuando se cumple ese tiempo.
+* **Auto:** la escribe letra por letra y el tipeo cuenta dentro de ese tiempo. Si tipear a velocidad
+  normal no entra (por ejemplo, palabra larga con un rango corto), tipea más rápido para llegar.
+
+* Si el mínimo es mayor que el máximo, se dan vuelta automáticamente. El máximo permitido es 10 s.
+* Los cambios se aplican en caliente, sin reiniciar el bot.
+* Si el turno termina mientras el bot espera, la palabra no se envía.
+* Ojo: si la demora es muy larga, la bomba puede explotar antes del envío.
+
 ---
 
 ## Requisitos

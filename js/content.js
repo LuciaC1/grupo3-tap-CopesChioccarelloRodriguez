@@ -62,9 +62,25 @@ const configuracionBot = {
   modo: MODOS_BOT.completa,
   delayEntreLetrasMin: 70,
   delayEntreLetrasMax: 200,
-  delayEnvioMin: 250,
-  delayEnvioMax: 1200
+  // Demora al azar entre que la palabra queda escrita y se envía (en ms).
+  // Se configura desde el popup (en segundos) y llega por chrome.storage.
+  delayEnvioMin: 500,
+  delayEnvioMax: 3500
 };
+
+const DEMORA_MAXIMA_PERMITIDA = 10000; // tope de seguridad: 10 s
+
+// Valida y aplica el rango de demora. Si vienen al revés (mín > máx), los da vuelta.
+function aplicarDemoras(min, max) {
+  min = Number(min);
+  max = Number(max);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+
+  if (min > max) [min, max] = [max, min];
+  configuracionBot.delayEnvioMin = Math.max(0, Math.min(min, DEMORA_MAXIMA_PERMITIDA));
+  configuracionBot.delayEnvioMax = Math.max(0, Math.min(max, DEMORA_MAXIMA_PERMITIDA));
+  console.log(`Demora de envío: entre ${configuracionBot.delayEnvioMin / 1000} y ${configuracionBot.delayEnvioMax / 1000} s`);
+}
 
 const ALFABETO = [..."abcdefghijklmnopqrstuvwxyz"];
 let letrasPendientes = [...ALFABETO];
@@ -127,6 +143,9 @@ chrome.runtime.onMessage.addListener(async (mensaje) => {
       aplicarModoBot(mensaje.config.modo);
       guardarModoBotEnStorage(mensaje.config.modo);
     }
+    if (mensaje.config && mensaje.config.delayEnvioMin !== undefined) {
+      aplicarDemoras(mensaje.config.delayEnvioMin, mensaje.config.delayEnvioMax);
+    }
 
     if (!botActivado) {
       botActivado = true;
@@ -158,15 +177,26 @@ chrome.runtime.onMessage.addListener(async (mensaje) => {
 });
 
 if (chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get(['botMode'], (datos) => {
+  chrome.storage.local.get(['botMode', 'delayEnvioMin', 'delayEnvioMax'], (datos) => {
     if (datos && datos.botMode) {
       aplicarModoBot(datos.botMode);
     }
+    if (datos && datos.delayEnvioMin !== undefined && datos.delayEnvioMax !== undefined) {
+      aplicarDemoras(datos.delayEnvioMin, datos.delayEnvioMax);
+    }
   });
 
+  // Cambios hechos en el popup se aplican en caliente
   chrome.storage.onChanged.addListener((cambios, area) => {
-    if (area === 'local' && cambios.botMode && cambios.botMode.newValue) {
+    if (area !== 'local') return;
+
+    if (cambios.botMode && cambios.botMode.newValue) {
       aplicarModoBot(cambios.botMode.newValue);
+    }
+    if (cambios.delayEnvioMin || cambios.delayEnvioMax) {
+      chrome.storage.local.get(['delayEnvioMin', 'delayEnvioMax'], (datos) => {
+        aplicarDemoras(datos.delayEnvioMin, datos.delayEnvioMax);
+      });
     }
   });
 }
@@ -320,29 +350,23 @@ function encontrarPalabra(silaba, palabrasExcluidas = []) {
   const letrasDisponibles = obtenerLetrasDisponibles();
   const exclusiones = new Set(palabrasExcluidas);
 
+  // Calculamos los puntajes UNA vez por palabra y después ordenamos.
+  // (Calcularlos dentro del sort los repetía en cada comparación: tardaba más de 1 s por turno.)
   const candidatas = diccionario
     .filter((p) => p.includes(silaba) && !exclusiones.has(p))
-    .sort((a, b) => {
-      const pendientesA = contarLetrasPendientesUtiles(a);
-      const pendientesB = contarLetrasPendientesUtiles(b);
-
-      if (pendientesB !== pendientesA) {
-        return pendientesB - pendientesA;
-      }
-
-      if (b.length !== a.length) {
-        return b.length - a.length;
-      }
-
-      const utilesA = contarLetrasUtiles(a, letrasDisponibles);
-      const utilesB = contarLetrasUtiles(b, letrasDisponibles);
-
-      if (utilesB !== utilesA) {
-        return utilesB - utilesA;
-      }
-
-      return Math.random() - 0.5;
-    });
+    .map((p) => ({
+      palabra: p,
+      pendientes: contarLetrasPendientesUtiles(p),
+      utiles: contarLetrasUtiles(p, letrasDisponibles),
+      azar: Math.random() // desempate final al azar
+    }))
+    .sort((a, b) =>
+      (b.pendientes - a.pendientes) ||
+      (b.palabra.length - a.palabra.length) ||
+      (b.utiles - a.utiles) ||
+      (a.azar - b.azar)
+    )
+    .map((c) => c.palabra);
 
   if (!candidatas.length) return null;
 
@@ -393,12 +417,15 @@ function escribirPalabraConRetardo(inputElement, palabra, { enviarAuto = false, 
   let acumulado = 0;
 
   const finalizarEscritura = () => {
+    if (enviarAuto) {
+      // Modo auto: terminó de tipear, ahora espera la demora al azar y envía solo
+      programarEnvio(inputElement, palabra, silabaActual);
+      return;
+    }
+
     setTimeout(() => {
       if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
         escrituraActiva = null;
-        if (configuracionBot.modo === MODOS_BOT.auto) {
-          esperandoEnvioUsuario = true;
-        }
       }
     }, 250);
   };
@@ -420,9 +447,54 @@ function escribirPalabraConRetardo(inputElement, palabra, { enviarAuto = false, 
     acumulado += delay;
   }
 
-  if (enviarAuto) {
-    console.log("Palabra escrita y detenida para envío manual:", palabra);
+}
+
+// ---------------- Envío ----------------
+
+// El input del juego está dentro de un <form>. Un Enter simulado no envía el form por sí
+// solo, así que: probamos con el Enter y, si el juego no lo atendió, enviamos el form.
+function enviarPalabra(inputElement) {
+  const enter = new KeyboardEvent('keydown', {
+    bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13
+  });
+  const atendido = !inputElement.dispatchEvent(enter); // false = el juego hizo preventDefault
+
+  if (!atendido && inputElement.form) {
+    inputElement.form.requestSubmit();
   }
+}
+
+function sigueSiendoMiTurno(inputElement) {
+  return inputElement.isConnected && inputElement.offsetParent !== null && !inputElement.disabled;
+}
+
+// Espera un tiempo al azar entre delayEnvioMin y delayEnvioMax y envía la palabra.
+function programarEnvio(inputElement, palabra, silabaActual) {
+  const demora = randomEntre(configuracionBot.delayEnvioMin, configuracionBot.delayEnvioMax);
+
+  // Guardamos la demora en la última jugada del historial (la que se acaba de elegir)
+  const jugada = historialPartida[historialPartida.length - 1];
+  if (jugada && jugada['Palabra Elegida'] === palabra) {
+    jugada['Demora de Envío (s)'] = (demora / 1000).toFixed(2);
+  }
+
+  console.log(`"${palabra}" se envía en ${(demora / 1000).toFixed(2)} s`);
+
+  const timer = setTimeout(() => {
+    // Si mientras esperábamos terminó el turno o cambió la sílaba, no enviamos nada
+    if (!escrituraActiva || escrituraActiva.silaba !== silabaActual) return;
+    if (!sigueSiendoMiTurno(inputElement)) return;
+
+    enviarPalabra(inputElement);
+
+    // El reintento ("pasaron 800 ms y sigo en la misma sílaba") se cuenta desde el envío,
+    // no desde que se eligió la palabra; si no, reintentaría antes de haber enviado.
+    ultimoIntentoTimestamp = Date.now();
+    escrituraActiva = null;
+  }, demora);
+
+  // En la lista de timers: si el turno termina antes, el setInterval los cancela todos
+  writeTimers.push(timer);
 }
 
 function escribirYEnviar(inputElement, palabra, silabaActual = "") {
@@ -449,14 +521,7 @@ function escribirYEnviar(inputElement, palabra, silabaActual = "") {
       const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
       nativeSetter.call(inputElement, palabra);
       inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-      setTimeout(() => {
-        if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
-          escrituraActiva = null;
-          if (configuracionBot.modo === MODOS_BOT.auto) {
-            esperandoEnvioUsuario = true;
-          }
-        }
-      }, 250);
+      programarEnvio(inputElement, palabra, silabaActual);
       break;
   }
 }
