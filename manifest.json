@@ -6,8 +6,11 @@
   "description": "Agente autonomo para BombParty",
 
   "browser_specific_settings": {
-    "gecko": {
-      "id": "jkml-bot@tu-proyecto.com"
+  "gecko": {
+    "id": "jkml-bot@tu-proyecto.com",
+    "data_collection_permissions": {
+      "required": ["none"]
+      }
     }
   },
 
