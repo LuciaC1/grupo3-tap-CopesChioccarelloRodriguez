@@ -32,7 +32,7 @@ function guardarDemoras() {
   if (chrome.storage && chrome.storage.local) {
     chrome.storage.local.set(demoras);
   }
-  document.getElementById('estado').innerText = 'Demora actualizada.';
+  document.getElementById('estado').textContent = 'Demora actualizada.';
 }
 
 inputDelayMin.addEventListener('change', guardarDemoras);
@@ -56,9 +56,41 @@ function guardarModoYAplicarlo(modo) {
 radioButtons.forEach((radio) => {
   radio.addEventListener('change', () => {
     const modoSeleccionado = radio.value;
-    document.getElementById('estado').innerText = `Modo ${modoSeleccionado}. Cambios aplicados en caliente.`;
+    document.getElementById('estado').textContent = `Modo ${modoSeleccionado}. Cambios aplicados en caliente.`;
     guardarModoYAplicarlo(modoSeleccionado);
   });
+});
+
+// ---------------- Encender / apagar ----------------
+// El estado se guarda en storage ("botEncendido"); content.js lo escucha con
+// storage.onChanged y se prende o se apaga en caliente.
+const btnEncender = document.getElementById('btn-encender');
+let botEncendido = false;
+
+function modoElegido() {
+  return document.querySelector('input[name="modo-bot"]:checked')?.value || 'completa';
+}
+
+function mostrarEstadoBot(encendido) {
+  botEncendido = encendido;
+  btnEncender.textContent = encendido ? '⏹ Apagar bot' : '▶ Encender bot';
+  btnEncender.classList.toggle('apagar', encendido);
+  document.getElementById('estado').textContent = encendido
+    ? `Bot encendido en modo ${modoElegido()}.`
+    : 'Bot apagado.';
+}
+
+btnEncender.addEventListener('click', () => {
+  const encender = !botEncendido;
+
+  if (encender) {
+    // Antes de encender, guardamos el modo y la demora elegidos
+    guardarModoYAplicarlo(modoElegido());
+    chrome.storage.local.set(leerDemoras());
+  }
+
+  chrome.storage.local.set({ botEncendido: encender });
+  mostrarEstadoBot(encender);
 });
 
 // Abre en una pestaña nueva la página con el informe de la última partida
@@ -67,28 +99,8 @@ document.getElementById('btn-informe').addEventListener('click', () => {
   window.close();
 });
 
-document.getElementById('btn-jugar').addEventListener('click', () => {
-  const modoSeleccionado = document.querySelector('input[name="modo-bot"]:checked')?.value || 'completa';
-  document.getElementById('estado').innerText = `Bot activado en modo ${modoSeleccionado}. Buscando partida...`;
-
-  guardarModoYAplicarlo(modoSeleccionado);
-  const demoras = leerDemoras();
-  if (chrome.storage && chrome.storage.local) {
-    chrome.storage.local.set(demoras);
-  }
-
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        comando: 'iniciar_bot',
-        config: { modo: modoSeleccionado, ...demoras }
-      });
-    }
-  });
-});
-
 if (chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get(['botMode', 'delayEnvioMin', 'delayEnvioMax'], (datos) => {
+  chrome.storage.local.get(['botMode', 'delayEnvioMin', 'delayEnvioMax', 'botEncendido'], (datos) => {
     if (datos && datos.botMode) {
       const radio = document.querySelector(`input[name="modo-bot"][value="${datos.botMode}"]`);
       if (radio) {
@@ -99,5 +111,7 @@ if (chrome.storage && chrome.storage.local) {
     if (datos && datos.delayEnvioMin !== undefined && datos.delayEnvioMax !== undefined) {
       mostrarDemoras(datos);
     }
+    // Mostramos si el bot está encendido o apagado
+    mostrarEstadoBot(Boolean(datos && datos.botEncendido));
   });
 }

@@ -17,6 +17,10 @@
     .rango label { flex: 1; font-size: 13px; }
     .rango input { width: 100%; box-sizing: border-box; padding: 4px; }
     #ayuda-demora { margin-top: 6px; font-size: 12px; color: #666; }
+    #btn-encender { background-color: #2e8b57; }
+    #btn-encender:hover { background-color: #246b43; }
+    #btn-encender.apagar { background-color: #c0392b; }
+    #btn-encender.apagar:hover { background-color: #962d22; }
     #btn-informe { margin-top: 8px; background-color: #555; }
     #btn-informe:hover { background-color: #333; }
   </style>
@@ -26,8 +30,7 @@
 
   <div>
     <label><input type="radio" name="modo-bot" value="completa" checked> Completa</label><br>
-    <label><input type="radio" name="modo-bot" value="auto"> Auto</label><br>
-    <label><input type="radio" name="modo-bot" value="manual"> Manual</label>
+    <label><input type="radio" name="modo-bot" value="auto"> Auto</label>
   </div>
 
   <fieldset>
@@ -39,7 +42,7 @@
     <div id="ayuda-demora">Envía entre 0.5 y 3.5 s al azar</div>
   </fieldset>
 
-  <button id="btn-jugar">¡Jugar!</button>
+  <button id="btn-encender">▶ Encender bot</button>
   <button id="btn-informe">📊 Ver último informe</button>
   <div id="estado">Esperando orden...</div>
   

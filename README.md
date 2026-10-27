@@ -32,8 +32,14 @@ Pasos para cargar y probar temporalmente la extensión en Mozilla Firefox:
 
 ### 3. Activar la extensión
 1. Hacer clic en el ícono de extensiones de Firefox y buscar la extensión.
-2. Al momento de darle a **"Unirse al juego"** en la sala, en el pop-up de la extensión hacer clic en **"Jugar"**.
-3. Esperar a que encuentre la partida y comience a elegir palabras de forma automática.
+2. Elegir el modo:
+   * **Completa:** escribe la palabra entera de una vez.
+   * **Auto:** la escribe letra por letra, como una persona.
+3. Al momento de darle a **"Unirse al juego"** en la sala, en el pop-up de la extensión hacer clic en **"▶ Encender bot"**.
+   El mismo botón pasa a decir **"⏹ Apagar bot"**: al apagarlo, el bot deja de jugar enseguida
+   (si estaba por enviar una palabra, la cancela y la borra). Si recargás la página con el bot
+   encendido, vuelve a arrancar solo.
+4. Esperar a que encuentre la partida y comience a elegir palabras de forma automática.
 
 ### 4. Demora antes de enviar
 En el pop-up se puede configurar un rango en segundos (por ejemplo, entre `0.5` y `3.5`).
