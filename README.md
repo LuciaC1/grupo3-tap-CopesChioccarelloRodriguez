@@ -14,6 +14,12 @@ el ciclo se agota, vuelve a comenzar desde la `A`.
   - **Auto:** escribe la palabra letra por letra.
 - **Demora configurable:** permite establecer un rango de espera de entre `0` y
   `10` segundos antes de enviar la palabra.
+- **Enter automático:** permite activar o desactivar el envío automático de la
+  palabra. Si se desactiva, el bot escribe la palabra pero no simula Enter.
+- **Palabras rechazadas:** conserva una lista de palabras que el juego marca
+  como inválidas y las excluye de futuras partidas.
+- **Seguimiento de rechazadas:** permite abrir una página con todas las
+  palabras rechazadas ordenadas alfabéticamente.
 - **Control en caliente:** el bot puede encenderse, apagarse o reconfigurarse
   sin reiniciar la extensión.
 - **Informe de la partida:** registra las decisiones tomadas y los tiempos de
@@ -36,7 +42,8 @@ la extensión.
 1. Ingresar a [JKLM.fun](https://jklm.fun/) y unirse a una partida.
 2. Abrir el menú de extensiones de Firefox y seleccionar **JKLM Bot**.
 3. Elegir el modo de escritura y configurar, si se desea, los valores mínimo y
-   máximo de la demora.
+   máximo de la demora. También se puede activar o desactivar **Enter
+   automático**.
 4. Durante la partida, seleccionar **▶ Encender bot**.
 5. Para detenerlo, seleccionar **⏹ Apagar bot**. Si había una palabra pendiente
    de envío, se cancela.
@@ -59,9 +66,25 @@ envía la palabra:
 Si los valores se ingresan invertidos, se ordenan automáticamente. Si el turno
 termina antes del envío, la palabra no se envía.
 
+Con **Enter automático** desactivado, la palabra queda escrita en el campo para
+que el envío se realice manualmente.
+
+Cuando el juego muestra un mensaje de palabra inválida, la palabra enviada se
+agrega inmediatamente a la lista y se guarda en el almacenamiento de la
+extensión, por lo que deja de ser elegida en futuras partidas. El
+botón **🧹 Limpiar palabras rechazadas** permite restaurar todas esas palabras.
+La extensión no modifica directamente el archivo TXT del diccionario.
+
+Después de enviar una palabra, si la misma sílaba continúa activa, el bot la
+considera rechazada, la agrega a la lista pendiente y prueba otra palabra. Con
+**Enter automático** desactivado, espera a que el usuario presione Enter antes
+de continuar con ese turno.
+
 ## Métricas e informe
 
 El botón **📊 Ver último informe** abre una pestaña con el detalle de la partida.
+El botón **📖 Ver palabras rechazadas** abre una pestaña con el listado completo
+de palabras que fueron marcadas como inválidas.
 El informe se guarda después de cada turno, puede consultarse mientras la partida
 está en curso y se actualiza automáticamente si la pestaña permanece abierta.
 

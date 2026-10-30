@@ -2,6 +2,8 @@ const radioButtons = document.querySelectorAll('input[name="modo-bot"]');
 const inputDelayMin = document.getElementById('delay-min');
 const inputDelayMax = document.getElementById('delay-max');
 const ayudaDemora = document.getElementById('ayuda-demora');
+const checkboxEnterAutomatico = document.getElementById('enter-automatico');
+const cantidadRechazadas = document.getElementById('cantidad-rechazadas');
 const DEMORA_MAXIMA_SEG = 10;
 
 // Lee los dos campos (en segundos), los corrige si hace falta y devuelve ms
@@ -53,12 +55,35 @@ function guardarModoYAplicarlo(modo) {
   });
 }
 
+function guardarEnterAutomaticoYAplicarlo(enterAutomatico) {
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ enterAutomatico });
+  }
+
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0]) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        comando: 'configurar_bot',
+        config: { enterAutomatico }
+      });
+    }
+  });
+}
+
 radioButtons.forEach((radio) => {
   radio.addEventListener('change', () => {
     const modoSeleccionado = radio.value;
     document.getElementById('estado').textContent = `Modo ${modoSeleccionado}. Cambios aplicados en caliente.`;
     guardarModoYAplicarlo(modoSeleccionado);
   });
+});
+
+checkboxEnterAutomatico.addEventListener('change', () => {
+  const enterAutomatico = checkboxEnterAutomatico.checked;
+  document.getElementById('estado').textContent = enterAutomatico
+    ? 'Enter automático activado.'
+    : 'Enter automático desactivado.';
+  guardarEnterAutomaticoYAplicarlo(enterAutomatico);
 });
 
 // ---------------- Encender / apagar ----------------
@@ -84,8 +109,9 @@ btnEncender.addEventListener('click', () => {
   const encender = !botEncendido;
 
   if (encender) {
-    // Antes de encender, guardamos el modo y la demora elegidos
+    // Antes de encender, guardamos las opciones elegidas
     guardarModoYAplicarlo(modoElegido());
+    guardarEnterAutomaticoYAplicarlo(checkboxEnterAutomatico.checked);
     chrome.storage.local.set(leerDemoras());
   }
 
@@ -99,8 +125,26 @@ document.getElementById('btn-informe').addEventListener('click', () => {
   window.close();
 });
 
+document.getElementById('btn-ver-rechazadas').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('html/rechazadas.html') });
+  window.close();
+});
+
+document.getElementById('btn-limpiar-rechazadas').addEventListener('click', () => {
+  chrome.storage.local.set({ palabrasRechazadas: [] });
+  cantidadRechazadas.textContent = '0';
+  document.getElementById('estado').textContent = 'Lista de palabras rechazadas limpiada.';
+});
+
 if (chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get(['botMode', 'delayEnvioMin', 'delayEnvioMax', 'botEncendido'], (datos) => {
+  chrome.storage.local.get([
+    'botMode',
+    'delayEnvioMin',
+    'delayEnvioMax',
+    'botEncendido',
+    'enterAutomatico',
+    'palabrasRechazadas'
+  ], (datos) => {
     if (datos && datos.botMode) {
       const radio = document.querySelector(`input[name="modo-bot"][value="${datos.botMode}"]`);
       if (radio) {
@@ -111,6 +155,12 @@ if (chrome.storage && chrome.storage.local) {
     if (datos && datos.delayEnvioMin !== undefined && datos.delayEnvioMax !== undefined) {
       mostrarDemoras(datos);
     }
+    if (datos && datos.enterAutomatico !== undefined) {
+      checkboxEnterAutomatico.checked = datos.enterAutomatico;
+    }
+    cantidadRechazadas.textContent = Array.isArray(datos && datos.palabrasRechazadas)
+      ? datos.palabrasRechazadas.length
+      : '0';
     // Mostramos si el bot está encendido o apagado
     mostrarEstadoBot(Boolean(datos && datos.botEncendido));
   });

@@ -3,6 +3,12 @@ let diccionarioCargado = false;
 let historialPartida = []; //Arreglo para guardar las decisiones del bot
 let inicioPartida = Date.now();
 let estabaEnPartida = false;
+let palabrasRechazadas = new Set();
+let palabrasRechazadasPendientes = new Set();
+let ultimaPalabraEnviada = null;
+let ultimaPalabraEnviadaTimestamp = 0;
+let silabaDeUltimaPalabraEnviada = "";
+let rechazoDetectadoParaPalabra = null;
 
 // Guarda el informe de la partida actual en el almacenamiento de la extensión,
 // para que el popup lo pueda abrir con "Ver último informe" (html/informe.html).
@@ -21,6 +27,8 @@ function guardarUltimoInforme() {
   });
 }
 
+iniciarDetectorDeRechazos();
+
 // Detecta el comienzo de una partida nueva: el panel "Unirse al juego" (.bottom .seating)
 // se oculta mientras se juega. Al empezar otra partida, el informe arranca de cero.
 function revisarNuevaPartida() {
@@ -30,6 +38,9 @@ function revisarNuevaPartida() {
   const enPartida = seating.hidden;
   if (enPartida && !estabaEnPartida) {
     reiniciarMetricas();
+  }
+  if (!enPartida && estabaEnPartida) {
+    guardarPalabrasRechazadas();
   }
   estabaEnPartida = enPartida;
 }
@@ -49,6 +60,70 @@ function reiniciarMetricas() {
   console.log("Métricas reiniciadas.");
 }
 
+function cargarPalabrasRechazadas(datos) {
+  const lista = Array.isArray(datos.palabrasRechazadas) ? datos.palabrasRechazadas : [];
+  palabrasRechazadas = new Set(lista);
+}
+
+function guardarPalabrasRechazadas() {
+  if (palabrasRechazadasPendientes.size === 0) return;
+
+  palabrasRechazadasPendientes.forEach((palabra) => palabrasRechazadas.add(palabra));
+  palabrasRechazadasPendientes.clear();
+  chrome.storage.local.set({ palabrasRechazadas: [...palabrasRechazadas] });
+  console.log("Palabras rechazadas guardadas:", palabrasRechazadas.size);
+}
+
+function registrarPalabraRechazada() {
+  if (!ultimaPalabraEnviada || rechazoDetectadoParaPalabra === ultimaPalabraEnviada) return;
+
+  palabrasRechazadasPendientes.add(ultimaPalabraEnviada);
+  rechazoDetectadoParaPalabra = ultimaPalabraEnviada;
+  guardarPalabrasRechazadas();
+  console.log("Palabra rechazada guardada y excluida:", ultimaPalabraEnviada);
+}
+
+function registrarEnvioManual(inputElement) {
+  if (!escrituraActiva || !inputElement.value) return;
+
+  ultimaPalabraEnviada = inputElement.value.trim().toLowerCase();
+  ultimaPalabraEnviadaTimestamp = Date.now();
+  silabaDeUltimaPalabraEnviada = escrituraActiva.silaba;
+  rechazoDetectadoParaPalabra = null;
+}
+
+function pareceMensajeDeRechazo(texto) {
+  const normalizado = texto.toLowerCase().replace(/\s+/g, " ").trim();
+  return /\b(invalid|not a word|unknown word|word not found|incorrect|palabra invalida|palabra no valida|palabra inválida|palabra no válida)\b/.test(normalizado);
+}
+
+function iniciarDetectorDeRechazos() {
+  const observer = new MutationObserver((mutaciones) => {
+    if (!botActivado || !ultimaPalabraEnviada) return;
+
+    for (const mutacion of mutaciones) {
+      const texto = mutacion.target.textContent || "";
+      if (pareceMensajeDeRechazo(texto)) {
+        registrarPalabraRechazada();
+        return;
+      }
+    }
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  document.addEventListener('keydown', (evento) => {
+    if (evento.key !== 'Enter') return;
+
+    const inputElement = evento.target instanceof Element
+      ? evento.target.closest('.selfTurn input')
+      : null;
+    if (inputElement) {
+      registrarEnvioManual(inputElement);
+    }
+  }, true);
+}
+
 async function cargarDiccionario() {
   const respuesta = await fetch(chrome.runtime.getURL("diccionarios/diccionarioingles.txt"));
 
@@ -61,7 +136,6 @@ async function cargarDiccionario() {
     .split(/\r?\n/)
     .map((palabra) => palabra.trim().toLowerCase())
     .filter((palabra) => palabra && !palabra.startsWith("#"));
-
   if (diccionario.length === 0) {
     throw new Error("El archivo está vacío");
   }
@@ -86,6 +160,12 @@ function aplicarModoBot(modo) {
   if (!modo) return;
   // Si quedó guardado un modo que ya no existe (ej: "manual"), usamos "completa"
   configuracionBot.modo = MODOS_BOT[modo] ? modo : MODOS_BOT.completa;
+}
+
+function aplicarEnterAutomatico(enterAutomatico) {
+  if (typeof enterAutomatico !== "boolean") return;
+  configuracionBot.enterAutomatico = enterAutomatico;
+  console.log(`Enter automático: ${enterAutomatico ? "activado" : "desactivado"}`);
 }
 
 const MODOS_BOT = {
@@ -120,6 +200,7 @@ async function encenderBot() {
 function apagarBot() {
   if (!botActivado) return;
   botActivado = false;
+  guardarPalabrasRechazadas();
 
   // Cancelamos lo que estuviera por escribirse o enviarse
   writeTimers.forEach((timer) => clearTimeout(timer));
@@ -147,6 +228,7 @@ function apagarBot() {
 
 const configuracionBot = {
   modo: MODOS_BOT.completa,
+  enterAutomatico: true,
   delayEntreLetrasMin: 70,
   delayEntreLetrasMax: 200,
   // Demora al azar entre que la palabra queda escrita y se envía (en ms).
@@ -247,6 +329,9 @@ chrome.runtime.onMessage.addListener(async (mensaje) => {
       guardarModoBotEnStorage(mensaje.config.modo);
       console.log("Configuración del bot actualizada:", configuracionBot.modo);
     }
+    if (mensaje.config && mensaje.config.enterAutomatico !== undefined) {
+      aplicarEnterAutomatico(mensaje.config.enterAutomatico);
+    }
   }
   
   //Escuchar el botón de resumen desde el popup
@@ -256,9 +341,19 @@ chrome.runtime.onMessage.addListener(async (mensaje) => {
 });
 
 if (chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get(['botMode', 'delayEnvioMin', 'delayEnvioMax', 'botEncendido'], (datos) => {
+  chrome.storage.local.get([
+    'botMode',
+    'delayEnvioMin',
+    'delayEnvioMax',
+    'botEncendido',
+    'enterAutomatico'
+  ], (datos) => {
+    cargarPalabrasRechazadas(datos || {});
     if (datos && datos.botMode) {
       aplicarModoBot(datos.botMode);
+    }
+    if (datos && datos.enterAutomatico !== undefined) {
+      aplicarEnterAutomatico(datos.enterAutomatico);
     }
     if (datos && datos.delayEnvioMin !== undefined && datos.delayEnvioMax !== undefined) {
       aplicarDemoras(datos.delayEnvioMin, datos.delayEnvioMax);
@@ -275,6 +370,12 @@ if (chrome.storage && chrome.storage.local) {
 
     if (cambios.botMode && cambios.botMode.newValue) {
       aplicarModoBot(cambios.botMode.newValue);
+    }
+    if (cambios.palabrasRechazadas) {
+      cargarPalabrasRechazadas({ palabrasRechazadas: cambios.palabrasRechazadas.newValue });
+    }
+    if (cambios.enterAutomatico) {
+      aplicarEnterAutomatico(cambios.enterAutomatico.newValue);
     }
     // Botón Encender / Apagar del popup
     if (cambios.botEncendido) {
@@ -312,6 +413,16 @@ function iniciarVigilancia() {
       }
 
       if (escrituraActiva && escrituraActiva.silaba !== silabaActual) {
+        escrituraActiva = null;
+      }
+
+      const envioSigueEnLaMismaSilaba =
+        silabaDeUltimaPalabraEnviada === silabaActual &&
+        Date.now() - ultimaPalabraEnviadaTimestamp > 800 &&
+        (!escrituraActiva || escrituraActiva.finalizada);
+
+      if (envioSigueEnLaMismaSilaba) {
+        registrarPalabraRechazada();
         escrituraActiva = null;
       }
 
@@ -431,7 +542,7 @@ function encontrarPalabra(silaba, palabrasExcluidas = []) {
   if (!diccionario.length) return null;
 
   const letrasDisponibles = obtenerLetrasDisponibles();
-  const exclusiones = new Set(palabrasExcluidas);
+  const exclusiones = new Set([...palabrasExcluidas, ...palabrasRechazadas, ...palabrasRechazadasPendientes]);
 
   // Calculamos los puntajes UNA vez por palabra y después ordenamos.
   // (Calcularlos dentro del sort los repetía en cada comparación: tardaba más de 1 s por turno.)
@@ -531,11 +642,9 @@ function escribirPalabraConRetardo(inputElement, palabra, { enviarAuto = false, 
       inputElement.dispatchEvent(new Event('input', { bubbles: true }));
 
       if (!enviarAuto && valorActual.length === letras.length) {
-        setTimeout(() => {
-          if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
-            escrituraActiva = null;
-          }
-        }, 250);
+        if (escrituraActiva && escrituraActiva.silaba === silabaActual) {
+          escrituraActiva.finalizada = true;
+        }
       }
     }, acumulado);
     writeTimers.push(timer);
@@ -590,6 +699,13 @@ function programarEnvio(inputElement, palabra, silabaActual, { demora = null, ti
     (tiempoTipeo > 0 ? ` (tipeo: ${(tiempoTipeo / 1000).toFixed(2)} s)` : ""));
 
   const timer = setTimeout(() => {
+    if (!configuracionBot.enterAutomatico) {
+      if (escrituraActiva && escrituraActiva.finalizada) {
+        escrituraActiva = null;
+      }
+      return;
+    }
+
     // Si mientras esperábamos terminó el turno o cambió la sílaba, no enviamos nada
     if (!escrituraActiva || escrituraActiva.silaba !== silabaActual) return;
     if (!sigueSiendoMiTurno(inputElement)) return;
@@ -601,6 +717,10 @@ function programarEnvio(inputElement, palabra, silabaActual, { demora = null, ti
       inputElement.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
+    ultimaPalabraEnviada = palabra;
+    ultimaPalabraEnviadaTimestamp = Date.now();
+    silabaDeUltimaPalabraEnviada = silabaActual;
+    rechazoDetectadoParaPalabra = null;
     enviarPalabra(inputElement);
 
     // El reintento ("pasaron 800 ms y sigo en la misma sílaba") se cuenta desde el envío,
@@ -627,14 +747,20 @@ function escribirYEnviar(inputElement, palabra, silabaActual = "") {
 
   switch (configuracionBot.modo) {
     case MODOS_BOT.auto:
-      escribirPalabraConRetardo(inputElement, palabra, { enviarAuto: true, silabaActual });
+      escribirPalabraConRetardo(inputElement, palabra, {
+        enviarAuto: configuracionBot.enterAutomatico,
+        silabaActual
+      });
       break;
     case MODOS_BOT.completa:
     default:
       const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
       nativeSetter.call(inputElement, palabra);
       inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-      programarEnvio(inputElement, palabra, silabaActual);
+      escrituraActiva.finalizada = true;
+      if (configuracionBot.enterAutomatico) {
+        programarEnvio(inputElement, palabra, silabaActual);
+      }
       break;
   }
 }

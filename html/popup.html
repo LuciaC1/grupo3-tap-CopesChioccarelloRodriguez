@@ -23,6 +23,10 @@
     #btn-encender.apagar:hover { background-color: #962d22; }
     #btn-informe { margin-top: 8px; background-color: #555; }
     #btn-informe:hover { background-color: #333; }
+    #btn-limpiar-rechazadas { margin-top: 8px; background-color: #777; }
+    #btn-limpiar-rechazadas:hover { background-color: #555; }
+    #btn-ver-rechazadas { margin-top: 8px; background-color: #8e44ad; }
+    #btn-ver-rechazadas:hover { background-color: #703688; }
   </style>
 </head>
 <body>
@@ -32,6 +36,8 @@
     <label><input type="radio" name="modo-bot" value="completa" checked> Completa</label><br>
     <label><input type="radio" name="modo-bot" value="auto"> Auto</label>
   </div>
+
+  <label><input id="enter-automatico" type="checkbox" checked> Enter automático</label>
 
   <fieldset>
     <legend>⏱️ Demora antes de enviar (seg)</legend>
@@ -44,6 +50,8 @@
 
   <button id="btn-encender">▶ Encender bot</button>
   <button id="btn-informe">📊 Ver último informe</button>
+  <button id="btn-ver-rechazadas">📖 Ver palabras rechazadas</button>
+  <button id="btn-limpiar-rechazadas">🧹 Limpiar palabras rechazadas (<span id="cantidad-rechazadas">0</span>)</button>
   <div id="estado">Esperando orden...</div>
   
   <script src="../js/popup.js"></script>
